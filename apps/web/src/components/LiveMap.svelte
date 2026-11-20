@@ -2,8 +2,6 @@
   import { onDestroy, onMount } from 'svelte';
   import L from 'leaflet';
   import 'leaflet/dist/leaflet.css';
-  import 'leaflet-draw';
-  import 'leaflet-draw/dist/leaflet.draw.css';
 
   let {
     devices = [],
@@ -18,15 +16,17 @@
   let map;
   let devicesLayer;
   let geofencesLayer;
-  let drawControl;
+  let draftLayer;
   let userMarker;
   let userAccuracyCircle;
   let markerById = new Map();
   let fenceById = new Map();
   let geoStatus = $state('buscando');
   let geoWatchId = null;
+  let drawMode = $state(null); // 'polygon' | 'rectangle' | 'circle' | null
+  let draftPoints = [];
+  let drawHint = $state('');
 
-  // Fix iconos por defecto de Leaflet en Vite
   delete L.Icon.Default.prototype._getIconUrl;
   L.Icon.Default.mergeOptions({
     iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
@@ -41,6 +41,182 @@
       iconSize: [18, 18],
       iconAnchor: [9, 9],
     });
+  }
+
+  function clearDraft() {
+    draftPoints = [];
+    if (draftLayer && map) {
+      map.removeLayer(draftLayer);
+      draftLayer = null;
+    }
+  }
+
+  function cancelDraw() {
+    clearDraft();
+    drawMode = null;
+    drawHint = '';
+    map?.dragging.enable();
+  }
+
+  function startDraw(mode) {
+    clearDraft();
+    drawMode = mode;
+    if (mode === 'polygon') {
+      drawHint = 'Clic para vértices. Doble clic o “Cerrar polígono” para terminar (mín. 3).';
+    } else if (mode === 'rectangle') {
+      drawHint = 'Clic en una esquina y luego en la esquina opuesta.';
+    } else if (mode === 'circle') {
+      drawHint = 'Clic en el centro y luego en el borde del círculo.';
+    }
+  }
+
+  function redrawDraft() {
+    if (!map) return;
+    if (draftLayer) {
+      map.removeLayer(draftLayer);
+      draftLayer = null;
+    }
+    if (!draftPoints.length) return;
+
+    if (drawMode === 'polygon') {
+      if (draftPoints.length === 1) {
+        draftLayer = L.circleMarker(draftPoints[0], {
+          radius: 5,
+          color: '#38bdf8',
+          fillOpacity: 1,
+        }).addTo(map);
+      } else if (draftPoints.length === 2) {
+        draftLayer = L.polyline(draftPoints, { color: '#38bdf8', weight: 2 }).addTo(map);
+      } else {
+        draftLayer = L.polygon(draftPoints, {
+          color: '#38bdf8',
+          weight: 2,
+          fillOpacity: 0.2,
+        }).addTo(map);
+      }
+      return;
+    }
+
+    if (drawMode === 'rectangle' && draftPoints.length === 1) {
+      draftLayer = L.circleMarker(draftPoints[0], {
+        radius: 5,
+        color: '#2dd4bf',
+        fillOpacity: 1,
+      }).addTo(map);
+      return;
+    }
+
+    if (drawMode === 'rectangle' && draftPoints.length >= 2) {
+      const bounds = L.latLngBounds(draftPoints[0], draftPoints[1]);
+      draftLayer = L.rectangle(bounds, {
+        color: '#2dd4bf',
+        weight: 2,
+        fillOpacity: 0.2,
+      }).addTo(map);
+      return;
+    }
+
+    if (drawMode === 'circle' && draftPoints.length === 1) {
+      draftLayer = L.circleMarker(draftPoints[0], {
+        radius: 5,
+        color: '#fbbf24',
+        fillOpacity: 1,
+      }).addTo(map);
+      return;
+    }
+
+    if (drawMode === 'circle' && draftPoints.length >= 2) {
+      const radius = map.distance(draftPoints[0], draftPoints[1]);
+      draftLayer = L.circle(draftPoints[0], {
+        radius: Math.max(1, radius),
+        color: '#fbbf24',
+        weight: 2,
+        fillOpacity: 0.2,
+      }).addTo(map);
+    }
+  }
+
+  function commitPayload(payload) {
+    clearDraft();
+    drawMode = null;
+    drawHint = '';
+    // Diferir el prompt para no bloquear el mapa a mitad del gesto
+    setTimeout(() => onCreateGeofence?.(payload), 0);
+  }
+
+  function finishPolygon() {
+    if (draftPoints.length < 3) {
+      drawHint = 'Necesitas al menos 3 puntos para el polígono.';
+      return;
+    }
+    const coordinates = draftPoints.map((p) => [p.lng, p.lat]);
+    commitPayload({ type: 'polygon', coordinates });
+  }
+
+  function onMapClick(e) {
+    if (!drawMode) return;
+    const point = e.latlng;
+
+    if (drawMode === 'polygon') {
+      draftPoints = [...draftPoints, point];
+      redrawDraft();
+      drawHint = `Vértices: ${draftPoints.length}. Doble clic o “Cerrar polígono” para terminar.`;
+      return;
+    }
+
+    if (drawMode === 'rectangle') {
+      if (draftPoints.length === 0) {
+        draftPoints = [point];
+        redrawDraft();
+        drawHint = 'Ahora haz clic en la esquina opuesta.';
+        return;
+      }
+      draftPoints = [draftPoints[0], point];
+      redrawDraft();
+      const bounds = L.latLngBounds(draftPoints[0], draftPoints[1]);
+      const sw = bounds.getSouthWest();
+      const ne = bounds.getNorthEast();
+      const nw = L.latLng(ne.lat, sw.lng);
+      const se = L.latLng(sw.lat, ne.lng);
+      // Anillo cerrado del rectángulo
+      const coordinates = [
+        [sw.lng, sw.lat],
+        [se.lng, se.lat],
+        [ne.lng, ne.lat],
+        [nw.lng, nw.lat],
+      ];
+      commitPayload({ type: 'polygon', coordinates });
+      return;
+    }
+
+    if (drawMode === 'circle') {
+      if (draftPoints.length === 0) {
+        draftPoints = [point];
+        redrawDraft();
+        drawHint = 'Ahora haz clic en el borde para definir el radio.';
+        return;
+      }
+      const center = draftPoints[0];
+      const radiusMeters = Math.max(1, Math.round(map.distance(center, point)));
+      commitPayload({
+        type: 'circle',
+        coordinates: [[center.lng, center.lat]],
+        radiusMeters,
+      });
+    }
+  }
+
+  function onMapDblClick(e) {
+    if (drawMode !== 'polygon') return;
+    L.DomEvent.stop(e);
+    // Evitar que el doble clic añada un punto extra: quitamos el último si es duplicado cercano
+    if (draftPoints.length >= 2) {
+      const last = draftPoints[draftPoints.length - 1];
+      if (map.distance(last, e.latlng) < 5) {
+        draftPoints = draftPoints.slice(0, -1);
+      }
+    }
+    finishPolygon();
   }
 
   function syncDevices(list) {
@@ -125,46 +301,6 @@
     }
   }
 
-  function extractRing(layer) {
-    let latlngs = layer.getLatLngs();
-    // Leaflet anida anillos: LatLng[] | LatLng[][] | LatLng[][][]
-    while (Array.isArray(latlngs?.[0]) && typeof latlngs[0].lat !== 'number') {
-      latlngs = latlngs[0];
-    }
-    return (latlngs || [])
-      .filter((p) => p && Number.isFinite(p.lat) && Number.isFinite(p.lng))
-      .map((p) => [p.lng, p.lat]);
-  }
-
-  function handleCreated(e) {
-    const layer = e.layer;
-    const layerType = e.layerType;
-    let payload = null;
-
-    if (layerType === 'circle') {
-      const c = layer.getLatLng();
-      const radiusMeters = Math.max(1, Math.round(layer.getRadius() || 0));
-      payload = {
-        type: 'circle',
-        coordinates: [[c.lng, c.lat]],
-        radiusMeters,
-      };
-    } else if (layerType === 'polygon' || layerType === 'rectangle') {
-      const coordinates = extractRing(layer);
-      if (coordinates.length >= 3) {
-        payload = {
-          type: 'polygon',
-          coordinates,
-        };
-      }
-    }
-
-    // Quitar el dibujo temporal; la geocerca real llega desde el servidor
-    if (map) map.removeLayer(layer);
-
-    if (payload) onCreateGeofence?.(payload);
-  }
-
   function userIcon() {
     return L.divIcon({
       className: 'user-marker',
@@ -176,6 +312,9 @@
 
   function applyUserLocation(position, { centerMap = false } = {}) {
     if (!map) return;
+    // No mover el mapa mientras se dibuja una geocerca
+    if (drawMode) return;
+
     const { latitude: lat, longitude: lng, accuracy } = position.coords;
     const latLng = [lat, lng];
 
@@ -220,8 +359,7 @@
       (pos) => applyUserLocation(pos, { centerMap }),
       (err) => {
         console.warn('[geo]', err.message);
-        geoStatus =
-          err.code === err.PERMISSION_DENIED ? 'permiso-denegado' : 'error';
+        geoStatus = err.code === err.PERMISSION_DENIED ? 'permiso-denegado' : 'error';
       },
       { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 }
     );
@@ -236,8 +374,10 @@
   }
 
   onMount(() => {
-    // Fallback mientras llega la geolocalización del navegador
-    map = L.map(mapEl, { zoomControl: true }).setView([19.4326, -99.1332], 13);
+    map = L.map(mapEl, {
+      zoomControl: true,
+      doubleClickZoom: false, // lo usamos para cerrar polígonos
+    }).setView([19.4326, -99.1332], 13);
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; OpenStreetMap',
@@ -247,46 +387,24 @@
     geofencesLayer = L.featureGroup().addTo(map);
     devicesLayer = L.layerGroup().addTo(map);
 
-    if (drawEnabled) {
-      drawControl = new L.Control.Draw({
-        position: 'topright',
-        draw: {
-          marker: false,
-          circlemarker: false,
-          polyline: false,
-          rectangle: {
-            shapeOptions: { color: '#2dd4bf' },
-          },
-          polygon: {
-            allowIntersection: false,
-            showArea: true,
-            shapeOptions: { color: '#38bdf8' },
-          },
-          circle: {
-            shapeOptions: { color: '#fbbf24' },
-          },
-        },
-        edit: {
-          featureGroup: geofencesLayer,
-          edit: false,
-          remove: false,
-        },
-      });
-      map.addControl(drawControl);
-      map.on(L.Draw.Event.CREATED, handleCreated);
-    }
+    map.on('click', onMapClick);
+    map.on('dblclick', onMapDblClick);
 
     syncGeofences(geofences);
     syncDevices(devices);
     onMapReady?.(map);
     locateBrowser({ centerMap: true });
 
+    // Ajuste de tamaño tras montar (layouts flex/grid)
+    setTimeout(() => map?.invalidateSize(), 80);
+
     return () => {
       if (geoWatchId != null) {
         navigator.geolocation.clearWatch(geoWatchId);
         geoWatchId = null;
       }
-      map?.off(L.Draw.Event.CREATED, handleCreated);
+      map?.off('click', onMapClick);
+      map?.off('dblclick', onMapDblClick);
       map?.remove();
       map = null;
     };
@@ -307,6 +425,43 @@
 
 <div class="map-shell">
   <div class="map" bind:this={mapEl}></div>
+
+  {#if drawEnabled}
+    <div class="draw-bar">
+      <button
+        type="button"
+        class:active={drawMode === 'polygon'}
+        onclick={() => (drawMode === 'polygon' ? cancelDraw() : startDraw('polygon'))}
+      >
+        Polígono
+      </button>
+      <button
+        type="button"
+        class:active={drawMode === 'rectangle'}
+        onclick={() => (drawMode === 'rectangle' ? cancelDraw() : startDraw('rectangle'))}
+      >
+        Cuadrado
+      </button>
+      <button
+        type="button"
+        class:active={drawMode === 'circle'}
+        onclick={() => (drawMode === 'circle' ? cancelDraw() : startDraw('circle'))}
+      >
+        Círculo
+      </button>
+      {#if drawMode === 'polygon' && draftPoints.length >= 3}
+        <button type="button" class="accent" onclick={finishPolygon}>Cerrar polígono</button>
+      {/if}
+      {#if drawMode}
+        <button type="button" class="ghost" onclick={cancelDraw}>Cancelar</button>
+      {/if}
+    </div>
+  {/if}
+
+  {#if drawHint}
+    <div class="draw-hint">{drawHint}</div>
+  {/if}
+
   <div class="geo-bar">
     {#if geoStatus === 'buscando'}
       <span>Obteniendo tu ubicación…</span>
@@ -339,6 +494,56 @@
     background: #0b1220;
   }
 
+  .draw-bar {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    z-index: 1100;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    max-width: calc(100% - 24px);
+  }
+
+  .draw-bar button {
+    border: 1px solid var(--border);
+    background: rgba(15, 20, 25, 0.92);
+    color: var(--text);
+    border-radius: 999px;
+    padding: 0.4rem 0.75rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+  }
+
+  .draw-bar button.active {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  .draw-bar button.accent {
+    background: var(--accent);
+    color: #042f2e;
+    border-color: transparent;
+  }
+
+  .draw-bar button.ghost {
+    color: var(--text-muted);
+  }
+
+  .draw-hint {
+    position: absolute;
+    top: 52px;
+    left: 12px;
+    z-index: 1100;
+    max-width: min(420px, calc(100% - 24px));
+    padding: 0.45rem 0.7rem;
+    border-radius: 10px;
+    background: rgba(15, 20, 25, 0.92);
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    font-size: 0.78rem;
+  }
+
   .geo-bar {
     position: absolute;
     left: 12px;
@@ -365,7 +570,8 @@
     font-size: 0.75rem;
   }
 
-  :global(.device-marker) {
+  :global(.device-marker),
+  :global(.user-marker) {
     background: transparent;
     border: none;
   }
@@ -386,11 +592,6 @@
   :global(.device-marker .dot.off) {
     background: #64748b;
     box-shadow: none;
-  }
-
-  :global(.user-marker) {
-    background: transparent;
-    border: none;
   }
 
   :global(.user-marker .you) {

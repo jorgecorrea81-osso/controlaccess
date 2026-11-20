@@ -183,7 +183,8 @@
           onMapReady={(m) => (map = m)}
         />
         <p class="hint">
-          API en el mismo Vercel por HTTP. El mapa se actualiza por polling cada 2s.
+          Dibuja con los botones Polígono / Cuadrado / Círculo. En polígono: varios clics y
+          “Cerrar polígono” (o doble clic). El mapa se actualiza por HTTP cada 2s.
         </p>
       </div>
 
