@@ -50,8 +50,16 @@ export function setupSocket(httpServer) {
 
       const deviceKey = socket.handshake.auth?.deviceKey;
       if (deviceKey) {
-        const device = await Device.findOne({ deviceKey, active: true });
-        if (!device) return next(new Error('Dispositivo no válido'));
+        let device = await Device.findOne({ deviceKey, active: true });
+        // Auto-registro para Flutter si el device aún no existe
+        if (!device) {
+          device = await Device.create({
+            name: `Móvil ${String(deviceKey).slice(-8)}`,
+            deviceKey: String(deviceKey).trim(),
+            label: 'Flutter',
+            active: true,
+          });
+        }
         socket.device = device;
         socket.role = 'device';
         return next();

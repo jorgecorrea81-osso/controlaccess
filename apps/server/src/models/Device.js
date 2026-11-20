@@ -46,7 +46,10 @@ deviceSchema.methods.toSafeJSON = function toSafeJSON() {
     lat: lat ?? null,
     lng: lng ?? null,
     lastSeenAt: this.lastSeenAt,
-    online: this.online,
+    // En modo HTTP (Vercel) "online" = visto en los últimos 45s
+    online: Boolean(
+      this.lastSeenAt && Date.now() - new Date(this.lastSeenAt).getTime() < 45000
+    ),
     accuracy: this.accuracy,
     speed: this.speed,
     heading: this.heading,

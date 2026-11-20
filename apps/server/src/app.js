@@ -18,16 +18,20 @@ export function createApp() {
       origin: config.corsOrigins,
       credentials: true,
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-      allowedHeaders: ['Content-Type', 'Authorization'],
+      allowedHeaders: ['Content-Type', 'Authorization', 'X-Device-Key'],
     })
   );
   app.use(express.json({ limit: '1mb' }));
-  app.use(morgan(config.nodeEnv === 'production' ? 'combined' : 'dev'));
+
+  if (config.nodeEnv !== 'production') {
+    app.use(morgan('dev'));
+  }
 
   app.get('/', (_req, res) => {
     res.json({
       ok: true,
       service: 'controlaccesos-api',
+      mode: 'http',
       docs: '/api/health',
     });
   });
@@ -37,7 +41,8 @@ export function createApp() {
       ok: true,
       service: 'controlaccesos-api',
       focus: 'realtime-geofence-tracking',
-      socketsReady: true,
+      transport: 'http',
+      socketsReady: false,
       env: config.nodeEnv,
       timestamp: new Date().toISOString(),
     });

@@ -1,27 +1,17 @@
-# Control Accesos — monorepo (tracking + geocercas)
+# Control Accesos (monorepo)
 
-| App | Tecnología | Dónde se publica |
-|-----|------------|------------------|
-| `apps/web` | Svelte + Leaflet | **Vercel** |
-| `apps/server` | Express + Socket.IO | **Render / Railway / Fly** (WebSockets) |
+Tracking GPS + geocercas. **Todo en Vercel** (web + API HTTP).
+
+| Pieza | Tecnología | Host |
+|-------|------------|------|
+| Web | Svelte + Leaflet | Vercel |
+| API | Express serverless (`/api`) | Vercel |
+| Móvil | Flutter GPS → HTTP | APK |
 | Datos | MongoDB Atlas | Cloud |
 
-> **Importante:** Vercel no mantiene conexiones Socket.IO persistentes.  
-> El **frontend** va a Vercel; el **backend** (REST + sockets para móvil) a un servicio Node 24/7.
+> Sin Socket.IO en producción Vercel. El panel hace polling HTTP cada 2s.
 
-## Estructura
-
-```
-controlaccesos/
-├── apps/
-│   ├── web/       # Panel Leaflet (Vercel)
-│   └── server/    # API + Socket.IO (Render/Docker)
-├── vercel.json
-├── render.yaml
-└── package.json   # npm workspaces
-```
-
-## Desarrollo local
+## Local
 
 ```bash
 npm install
@@ -32,73 +22,16 @@ npm run dev
 - Web: http://localhost:5173  
 - API: http://localhost:4000/api/health  
 
-Login demo: `admin@controlaccesos.local` / `admin123`
+## Vercel
 
-## 1) Publicar el backend (obligatorio para móvil)
+Ver `DEPLOY.md`. Variables mínimas: `MONGODB_URI`, `JWT_SECRET`, `CORS_ORIGINS=*`.
 
-Socket.IO y la API deben ser públicos (HTTPS).
+Desactiva **Deployment Protection** para que Flutter pueda llamar a `/api`.
 
-### Opción rápida: Render
+## Flutter
 
-1. Sube el repo a GitHub
-2. En [Render](https://render.com) → New → Blueprint → selecciona `render.yaml`
-3. Configura variables:
-   - `MONGODB_URI` — Atlas (Network Access: `0.0.0.0/0`)
-   - `CLIENT_URL` — URL de Vercel (ej. `https://tu-app.vercel.app`)
-   - `CORS_ORIGINS` — `*` (móvil + web) o lista de orígenes
-   - `JWT_SECRET` — secreto fuerte
-4. Tras el deploy, anota la URL: `https://controlaccesos-api.onrender.com`
-5. Siembra datos (shell de Render o local apuntando a Atlas):
+URL = tu dominio Vercel:
 
-```bash
-npm run seed
-```
+`https://TU-APP.vercel.app`
 
-### Docker local / otro host
-
-```bash
-docker build -f apps/server/Dockerfile -t controlaccesos-api .
-docker run -p 4000:4000 --env-file .env controlaccesos-api
-```
-
-## 2) Publicar el frontend en Vercel
-
-1. Importa el **mismo monorepo** en [Vercel](https://vercel.com)
-2. Framework: Vite (ya definido en `vercel.json`)
-3. Variables de entorno **de build**:
-
-| Variable | Ejemplo |
-|----------|---------|
-| `VITE_API_URL` | `https://controlaccesos-api.onrender.com/api` |
-| `VITE_SOCKET_URL` | `https://controlaccesos-api.onrender.com` |
-
-4. Deploy
-
-El panel web hablará con tu API pública; Flutter usará la misma base.
-
-## Móvil (Flutter) — contrato listo
-
-Base: `https://TU-API...`
-
-- REST: `POST /api/auth/login`, `GET /api/devices`, etc.
-- Socket.IO path: `/socket.io`
-- Auth socket: `{ deviceKey: "DEV-ANA-001" }` o `{ token: "<JWT>" }`
-- Emit: `device:location` `{ deviceKey, lat, lng }`
-- Escuchar (monitores): `device:moved`, `geofence:event`
-
-## Variables backend
-
-Ver `.env.example`. Claves relevantes:
-
-- `CORS_ORIGINS=*` — permite web Vercel + apps móviles
-- `HOST=0.0.0.0` — escucha en red (contenedores)
-- `CLIENT_URL` — URL del front en Vercel
-
-## Scripts
-
-```bash
-npm run dev          # local API + web
-npm run build        # build Svelte (Vercel)
-npm run start        # API producción
-npm run seed         # datos demo
-```
+APK de prueba: `apps/mobile/dist/controlaccesos-mobile.apk`

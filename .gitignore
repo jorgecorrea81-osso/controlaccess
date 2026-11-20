@@ -11,8 +11,11 @@ build/
 coverage/
 .idea/
 .vscode/
-apps/mobile/
-*.apk
+apps/mobile/.dart_tool/
+apps/mobile/build/
+apps/mobile/.flutter-plugins-dependencies
 *.ipa
+# APK de prueba generado (permitido en dist)
+!apps/mobile/dist/*.apk
 apps/web/.env
 apps/web/.env.production

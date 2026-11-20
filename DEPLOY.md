@@ -1,69 +1,71 @@
-# Guía rápida de publicación
+# Despliegue todo en Vercel (HTTP, sin Render)
 
-## Por qué 2 plataformas
+Web + API viven en el **mismo proyecto Vercel**.  
+No hay Socket.IO: Flutter y el panel usan **HTTP** (polling cada 2s en web).
 
-| Pieza | Plataforma | Motivo |
-|-------|------------|--------|
-| Frontend Svelte | **Vercel** | Ideal para SPA/estáticos |
-| Backend Express + Socket.IO | **Render** (u otro Node 24/7) | Los móviles necesitan WebSockets persistentes; Vercel Serverless no los mantiene |
+## 1) Variables de entorno en Vercel
 
-El repo es **un solo monorepo**; Vercel y Render apuntan al mismo GitHub.
+Project → Settings → Environment Variables:
 
----
+| Variable | Valor |
+|----------|--------|
+| `MONGODB_URI` | tu connection string Atlas |
+| `JWT_SECRET` | secreto largo |
+| `CORS_ORIGINS` | `*` |
+| `CLIENT_URL` | `https://TU-PROYECTO.vercel.app` |
+| `NODE_ENV` | `production` |
 
-## Paso A — Backend (Render)
+Opcional (web ya usa `/api` del mismo dominio):
 
-1. Push del repo a GitHub  
-2. [Render](https://dashboard.render.com) → New → Blueprint → `render.yaml`  
-3. Variables:
-   - `MONGODB_URI` = tu connection string de Atlas  
-   - `CLIENT_URL` = `https://TU-PROYECTO.vercel.app` (la pondrás tras el paso B; puedes usar `*` en `CORS_ORIGINS` mientras tanto)  
-   - `CORS_ORIGINS` = `*`  
-   - `JWT_SECRET` = (Render puede generarlo)  
-4. Atlas → Network Access → permite `0.0.0.0/0`  
-5. Cuando el servicio esté live, prueba:  
-   `https://TU-API.onrender.com/api/health`  
-6. Siembra: en local con el mismo `MONGODB_URI` → `npm run seed`
+| `VITE_API_URL` | `/api` |
 
-## Paso B — Frontend (Vercel)
+## 2) Protección de deployment (importante para Flutter)
 
-El error **"404 NOT_FOUND / This page doesn't exist"** casi siempre es porque Vercel no encuentra `apps/web/dist`.
+Si ves login de Vercel al abrir la URL:
 
-### Ajustes obligatorios en el proyecto Vercel
+Settings → Deployment Protection → **desactiva** Protection para Production  
+(o el móvil no podrá llamar a `/api`).
 
-Settings → General:
+## 3) Settings de build
 
 | Campo | Valor |
 |-------|--------|
-| **Root Directory** | `.` (raíz del repo, **vacío** / no pongas `apps/web`) |
-| **Framework Preset** | Other |
-| **Build Command** | `npm run build` |
-| **Output Directory** | `apps/web/dist` |
-| **Install Command** | `npm install` |
+| Root Directory | vacío (raíz) |
+| Framework | Other |
+| Build Command | `npm run build` |
+| Output Directory | `apps/web/dist` |
+| Install Command | `npm install` |
 
-1. Redeploy (Deployments → … → Redeploy)  
-2. Environment Variables:
+## 4) Probar API
+
+Tras el deploy:
+
+`https://TU-PROYECTO.vercel.app/api/health`
+
+Debe devolver `{ "ok": true, "transport": "http" }`.
+
+## 5) Seed (una vez)
+
+En local, con el mismo `MONGODB_URI`:
+
+```bash
+npm run seed
+```
+
+## 6) Flutter
+
+URL en la app = la de Vercel (sin `/api` al final):
+
+`https://TU-PROYECTO.vercel.app`
+
+Endpoints usados:
+
+- `POST /api/devices/register`
+- `POST /api/devices/location` `{ deviceKey, lat, lng }`
+
+## Flujo
 
 ```
-VITE_API_URL=https://TU-API.onrender.com/api
-VITE_SOCKET_URL=https://TU-API.onrender.com
+Flutter GPS → POST /api/devices/location → MongoDB
+Panel web   → GET /api/devices + /api/geofences/events cada 2s
 ```
-
-3. En el log de build debe aparecer `vite build` y archivos en `apps/web/dist`  
-4. Copia la URL de Vercel y actualiza en Render `CLIENT_URL` (opcional si `CORS_ORIGINS=*`)
-
-> Si en Root Directory pusiste `apps/web`, cámbialo a la raíz del monorepo o Vercel buscará mal la salida y verás 404.
-
-## Móvil
-
-Apunta Flutter a la URL del **backend** (Render), no a Vercel:
-
-- REST: `https://TU-API.onrender.com/api/...`
-- Socket.IO: mismo host, path `/socket.io`, auth `{ deviceKey }` o `{ token }`
-
-## Checklist
-
-- [ ] `/api/health` responde `ok: true`  
-- [ ] Login web funciona contra la API pública  
-- [ ] Socket conecta (panel muestra “conectado”)  
-- [ ] Simulador mueve un device y dispara geocercas  

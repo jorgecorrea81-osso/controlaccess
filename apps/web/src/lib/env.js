@@ -1,5 +1,5 @@
-/** URL base REST (incluye /api). En Vercel: https://tu-api.onrender.com/api */
+/**
+ * En Vercel, web y API comparten el mismo dominio → usar /api
+ * En local con Vite proxy también es /api
+ */
 export const API_BASE = String(import.meta.env.VITE_API_URL || '/api').replace(/\/$/, '');
-
-/** Origen del servidor Socket.IO (sin path). En Vercel: https://tu-api.onrender.com */
-export const SOCKET_URL = String(import.meta.env.VITE_SOCKET_URL || '/').replace(/\/$/, '') || '/';

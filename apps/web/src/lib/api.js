@@ -46,6 +46,8 @@ export const authApi = {
 export const devicesApi = {
   list: () => api('/devices'),
   create: (payload) => api('/devices', { method: 'POST', body: payload }),
+  /** Endpoint público HTTP (Flutter + simulador) */
+  pushLocation: (payload) => api('/devices/location', { method: 'POST', body: payload }),
   updateLocation: (deviceKey, payload) =>
     api(`/devices/${encodeURIComponent(deviceKey)}/location`, {
       method: 'POST',

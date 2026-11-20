@@ -1,5 +1,4 @@
 <script>
-  import { emitDeviceLocation } from '../lib/socket.js';
   import { devicesApi } from '../lib/api.js';
 
   let { devices = [], onMoved } = $props();
@@ -10,7 +9,6 @@
   let step = $state(0.001);
   let busy = $state(false);
   let message = $state('');
-  let useSocket = $state(true);
 
   $effect(() => {
     if (!deviceKey && devices.length) {
@@ -30,19 +28,12 @@
     busy = true;
     message = '';
     try {
-      const payload = {
+      const result = await devicesApi.pushLocation({
         deviceKey,
         lat,
         lng,
         source: 'simulator',
-      };
-
-      let result;
-      if (useSocket) {
-        result = await emitDeviceLocation(payload);
-      } else {
-        result = await devicesApi.updateLocation(deviceKey, payload);
-      }
+      });
 
       onMoved?.(result);
       const crosses = result.events?.length
@@ -60,7 +51,7 @@
 <section class="panel">
   <header>
     <h2>Simulador móvil</h2>
-    <p>Mueve un device como lo hará Flutter por sockets</p>
+    <p>Envía ubicación por HTTP (igual que Flutter en Vercel)</p>
   </header>
 
   <label>
@@ -97,13 +88,8 @@
     <button type="button" onclick={() => nudge(-step, 0)}>S</button>
   </div>
 
-  <label class="check">
-    <input type="checkbox" bind:checked={useSocket} />
-    Enviar por Socket.IO
-  </label>
-
   <button class="send" type="button" disabled={busy || !deviceKey} onclick={send}>
-    {busy ? 'Enviando…' : 'Enviar ubicación'}
+    {busy ? 'Enviando…' : 'Enviar ubicación HTTP'}
   </button>
 
   {#if message}
@@ -173,12 +159,6 @@
     background: var(--bg-soft);
     color: var(--text);
     font-weight: 700;
-  }
-
-  .check {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
   }
 
   .send {

@@ -2,7 +2,6 @@
   import { onMount } from 'svelte';
   import { auth } from '../lib/auth.svelte.js';
   import { devicesApi, geofencesApi } from '../lib/api.js';
-  import { connectSocket, disconnectSocket } from '../lib/socket.js';
   import { roleLabel } from '../lib/format.js';
   import LiveMap from './LiveMap.svelte';
   import EventFeed from './EventFeed.svelte';
@@ -11,10 +10,11 @@
   let devices = $state([]);
   let geofences = $state([]);
   let events = $state([]);
-  let socketStatus = $state('desconectado');
+  let syncStatus = $state('idle');
   let loadError = $state('');
   let createError = $state('');
   let map;
+  let pollTimer;
 
   function upsertDevice(device) {
     if (!device?.id) return;
@@ -29,6 +29,22 @@
     events = [...list, ...events.filter((e) => !ids.has(e.id))].slice(0, 60);
   }
 
+  async function refreshLive() {
+    try {
+      syncStatus = 'sync';
+      const [devicesRes, eventsRes] = await Promise.all([
+        devicesApi.list(),
+        geofencesApi.events(40),
+      ]);
+      devices = devicesRes.devices;
+      events = eventsRes.events;
+      syncStatus = 'ok';
+    } catch (err) {
+      syncStatus = 'error';
+      console.warn('[poll]', err.message);
+    }
+  }
+
   async function loadInitial() {
     const [devicesRes, fencesRes, eventsRes] = await Promise.all([
       devicesApi.list(),
@@ -38,6 +54,7 @@
     devices = devicesRes.devices;
     geofences = fencesRes.geofences;
     events = eventsRes.events;
+    syncStatus = 'ok';
   }
 
   async function handleCreateGeofence(draft) {
@@ -73,26 +90,14 @@
       }
     })();
 
-    if (auth.token) {
-      connectSocket(auth.token, {
-        onConnect: () => {
-          socketStatus = 'conectado';
-        },
-        onDisconnect: () => {
-          socketStatus = 'desconectado';
-        },
-        onError: () => {
-          socketStatus = 'error';
-        },
-        onDeviceMoved: ({ device }) => upsertDevice(device),
-        onGeofenceEvent: ({ event }) => prependEvents(event ? [event] : []),
-        onGeofenceEvents: ({ events: list }) => prependEvents(list || []),
-      });
-    }
+    // Polling HTTP cada 2s (reemplaza Socket.IO en Vercel)
+    pollTimer = setInterval(() => {
+      if (!cancelled) refreshLive();
+    }, 2000);
 
     return () => {
       cancelled = true;
-      disconnectSocket();
+      clearInterval(pollTimer);
     };
   });
 </script>
@@ -144,7 +149,7 @@
     </section>
 
     <div class="aside-footer">
-      <p class="socket" data-status={socketStatus}>Socket: {socketStatus}</p>
+      <p class="socket" data-status={syncStatus}>HTTP sync: {syncStatus}</p>
       <button class="logout" type="button" onclick={() => auth.logout()}>Cerrar sesión</button>
     </div>
   </aside>
@@ -166,8 +171,7 @@
           onMapReady={(m) => (map = m)}
         />
         <p class="hint">
-          Al entrar, el mapa usa la ubicación del navegador. Dibuja polígonos, rectángulos o círculos
-          para crear geocercas.
+          API en el mismo Vercel por HTTP. El mapa se actualiza por polling cada 2s.
         </p>
       </div>
 
@@ -304,7 +308,7 @@
     color: var(--text-muted);
   }
 
-  .socket[data-status='conectado'] {
+  .socket[data-status='ok'] {
     color: var(--success);
   }
 

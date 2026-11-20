@@ -2,13 +2,14 @@
   "name": "controlaccesos",
   "version": "1.0.0",
   "private": true,
+  "type": "module",
   "description": "Control de accesos / tracking geocercas - monorepo (Svelte + Express + MongoDB)",
   "workspaces": [
     "apps/*"
   ],
   "scripts": {
     "postinstall": "node scripts/fix-npm-workspaces.mjs",
-    "dev": "concurrently -n server,web -c blue,green \"npm run dev -w @controlaccesos/server\" \"npm run dev -w @controlaccesos/web\"",
+    "dev": "concurrently -n server,web -c blue,green \"npm run dev --workspace=@controlaccesos/server\" \"npm run dev --workspace=@controlaccesos/web\"",
     "dev:server": "npm run dev --workspace=@controlaccesos/server",
     "dev:web": "npm run dev --workspace=@controlaccesos/web",
     "build": "npm run build --workspace=@controlaccesos/web",
@@ -16,6 +17,16 @@
     "start": "npm run start --workspace=@controlaccesos/server",
     "start:server": "npm run start --workspace=@controlaccesos/server",
     "seed": "npm run seed --workspace=@controlaccesos/server"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.9.5",
+    "morgan": "^1.10.0",
+    "zod": "^3.24.1"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"
