@@ -74,6 +74,18 @@
     }
   }
 
+  async function handleDeleteGeofence(fence) {
+    createError = '';
+    const ok = window.confirm(`¿Eliminar la geocerca "${fence.name}"?`);
+    if (!ok) return;
+    try {
+      await geofencesApi.remove(fence.id);
+      geofences = geofences.filter((g) => g.id !== fence.id);
+    } catch (err) {
+      createError = err.message;
+    }
+  }
+
   function handleSimResult(result) {
     if (result?.device) upsertDevice(result.device);
     if (result?.events?.length) prependEvents(result.events);
@@ -176,6 +188,27 @@
       </div>
 
       <div class="side-pane">
+        <section class="fence-panel">
+          <header>
+            <h2>Geocercas</h2>
+            <p>Elimina y vuelve a dibujar en el mapa</p>
+          </header>
+          <ul>
+            {#each geofences as fence (fence.id)}
+              <li>
+                <div>
+                  <strong>{fence.name}</strong>
+                  <span>{fence.type}{fence.radiusMeters ? ` · ${fence.radiusMeters}m` : ''}</span>
+                </div>
+                <button type="button" class="danger" onclick={() => handleDeleteGeofence(fence)}>
+                  Borrar
+                </button>
+              </li>
+            {:else}
+              <li class="empty">No hay geocercas. Dibújalas en el mapa.</li>
+            {/each}
+          </ul>
+        </section>
         <Simulator {devices} onMoved={handleSimResult} />
         <EventFeed {events} />
       </div>
@@ -357,6 +390,72 @@
     display: grid;
     gap: 0.9rem;
     align-content: start;
+  }
+
+  .fence-panel {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1rem;
+  }
+
+  .fence-panel header h2 {
+    margin: 0 0 0.2rem;
+    font-size: 1.05rem;
+  }
+
+  .fence-panel header p {
+    margin: 0 0 0.75rem;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+  }
+
+  .fence-panel ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 0.5rem;
+    max-height: 180px;
+    overflow: auto;
+  }
+
+  .fence-panel li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.55rem 0.65rem;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--bg);
+  }
+
+  .fence-panel li div {
+    display: grid;
+    gap: 0.1rem;
+    min-width: 0;
+  }
+
+  .fence-panel span {
+    color: var(--text-muted);
+    font-size: 0.78rem;
+  }
+
+  .fence-panel .danger {
+    border: 1px solid rgba(248, 113, 113, 0.4);
+    background: transparent;
+    color: var(--danger);
+    border-radius: 8px;
+    padding: 0.35rem 0.55rem;
+    font-size: 0.8rem;
+    flex-shrink: 0;
+  }
+
+  .fence-panel .empty {
+    color: var(--text-muted);
+    justify-content: center;
+    border-style: dashed;
   }
 
   .banner.error {
