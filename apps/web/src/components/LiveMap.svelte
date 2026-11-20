@@ -24,8 +24,9 @@
   let geoStatus = $state('buscando');
   let geoWatchId = null;
   let drawMode = $state(null); // 'polygon' | 'rectangle' | 'circle' | null
-  let draftPoints = [];
+  let draftPoints = $state([]);
   let drawHint = $state('');
+  let vertexCount = $derived(draftPoints.length);
 
   delete L.Icon.Default.prototype._getIconUrl;
   L.Icon.Default.mergeOptions({
@@ -449,9 +450,6 @@
       >
         Círculo
       </button>
-      {#if drawMode === 'polygon' && draftPoints.length >= 3}
-        <button type="button" class="accent" onclick={finishPolygon}>Cerrar polígono</button>
-      {/if}
       {#if drawMode}
         <button type="button" class="ghost" onclick={cancelDraw}>Cancelar</button>
       {/if}
@@ -460,6 +458,20 @@
 
   {#if drawHint}
     <div class="draw-hint">{drawHint}</div>
+  {/if}
+
+  {#if drawMode === 'polygon'}
+    <div class="finish-bar">
+      <span class="finish-count">{vertexCount} vértice{vertexCount === 1 ? '' : 's'}</span>
+      <button
+        type="button"
+        class="finish-btn"
+        disabled={vertexCount < 3}
+        onclick={finishPolygon}
+      >
+        Cerrar polígono
+      </button>
+    </div>
   {/if}
 
   <div class="geo-bar">
@@ -520,12 +532,6 @@
     color: var(--accent);
   }
 
-  .draw-bar button.accent {
-    background: var(--accent);
-    color: #042f2e;
-    border-color: transparent;
-  }
-
   .draw-bar button.ghost {
     color: var(--text-muted);
   }
@@ -542,6 +548,43 @@
     border: 1px solid var(--border);
     color: var(--text-muted);
     font-size: 0.78rem;
+  }
+
+  .finish-bar {
+    position: absolute;
+    left: 50%;
+    bottom: 64px;
+    transform: translateX(-50%);
+    z-index: 1200;
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    padding: 0.55rem 0.75rem;
+    border-radius: 14px;
+    background: rgba(15, 20, 25, 0.95);
+    border: 1px solid rgba(45, 212, 191, 0.45);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  }
+
+  .finish-count {
+    color: var(--text-muted);
+    font-size: 0.82rem;
+    white-space: nowrap;
+  }
+
+  .finish-btn {
+    border: none;
+    border-radius: 10px;
+    padding: 0.7rem 1.1rem;
+    background: linear-gradient(135deg, var(--accent), var(--accent-dim));
+    color: #042f2e;
+    font-weight: 800;
+    font-size: 0.92rem;
+  }
+
+  .finish-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
   }
 
   .geo-bar {
