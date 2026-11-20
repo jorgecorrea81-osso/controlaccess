@@ -1,0 +1,29 @@
+# Despliegue del backend (API + Socket.IO) en Render
+# Vercel NO mantiene WebSockets persistentes; por eso la API va aquí.
+services:
+  - type: web
+    name: controlaccesos-api
+    runtime: docker
+    dockerfilePath: apps/server/Dockerfile
+    dockerContext: .
+    plan: free
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: HOST
+        value: 0.0.0.0
+      - key: PORT
+        value: 4000
+      - key: MONGODB_URI
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: 7d
+      - key: CLIENT_URL
+        sync: false
+      - key: CORS_ORIGINS
+        value: "*"
+      - key: SOCKET_PATH
+        value: /socket.io
